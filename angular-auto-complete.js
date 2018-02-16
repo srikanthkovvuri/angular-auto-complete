@@ -41,8 +41,6 @@
             var ctrl = ctrls[0]; //directive controller
             ctrl.textModelCtrl = ctrls[1]; // textbox model controller
 
-            internalService.addDirectiveCtrl(ctrl);
-
             // store the jquery element on the controller
             ctrl.target = element;
 
@@ -95,16 +93,16 @@
                 container.addClass('auto-complete-container unselectable');
                 container.attr('data-instance-id', ctrl.instanceId);
 
-                var templateFn = $compile(_getDropdownListTemplate());
-                var elementUL = templateFn(scope);
+                var linkFn = $compile(_getDropdownListTemplate());
+                var elementUL = linkFn(scope);
                 container.append(elementUL);
 
                 return container;
             }
 
             function _getDefaultContainer() {
-                var templateFn = $compile(_getContainerTemplate());
-                return templateFn(scope);
+                var linkFn = $compile(_getContainerTemplate());
+                return linkFn(scope);
             }
 
             function _getContainerTemplate() {
@@ -135,7 +133,7 @@
             function _wireupEvents() {
 
                 // when the target(textbox) gets focus activate the corresponding container
-                element.on('focus', function () {
+                element.on(DOM_EVENT.FOCUS, function () {
                     scope.$evalAsync(function () {
                         ctrl.activate();
                         if (ctrl.options.activateOnFocus) {
@@ -144,21 +142,21 @@
                     });
                 });
 
-                element.on('input', function () {
+                element.on(DOM_EVENT.INPUT, function () {
                     scope.$evalAsync(function () {
                         _tryQuery(element.val());
                     });
                 });
 
                 // handle key strokes
-                element.on('keydown', function (event) {
+                element.on(DOM_EVENT.KEYDOWN, function (event) {
                     var $event = event;
                     scope.$evalAsync(function () {
-                        _elementKeyDown($event);
+                        _handleElementKeyDown($event);
                     });
                 });
 
-                ctrl.container.find('ul').on('scroll', function () {
+                ctrl.container.find('ul').on(DOM_EVENT.SCROLL, function () {
                     if (!ctrl.options.pagingEnabled) {
                         return;
                     }
@@ -177,14 +175,14 @@
                 });
 
                 // hide container on ENTER
-                $document.on('keydown', function (event) {
+                $document.on(DOM_EVENT.KEYDOWN, function (event) {
                     var $event = event;
                     scope.$evalAsync(function () {
-                        _documentKeyDown($event);
+                        _handleDocumentKeyDown($event);
                     });
                 });
 
-                angular.element($window).on('resize', function () {
+                angular.element($window).on(DOM_EVENT.RESIZE, function () {
                     if (ctrl.options.hideDropdownOnWindowResize) {
                         scope.$evalAsync(function () {
                             ctrl.autoHide();
@@ -192,51 +190,50 @@
                     }
                 });
 
-                $document.on('click', function (event) {
+                $document.on(DOM_EVENT.CLICK, function (event) {
                     var $event = event;
                     scope.$evalAsync(function () {
-                        _documentClick($event);
+                        _handleDocumentClick($event);
                     });
                 });
+            }
 
-                function _ignoreKeyCode(keyCode) {
-                    return [
-                        KEYCODE.TAB,
-                        KEYCODE.ALT,
-                        KEYCODE.CTRL,
-                        KEYCODE.LEFTARROW,
-                        KEYCODE.RIGHTARROW,
-                        KEYCODE.MAC_COMMAND_LEFT,
-                        KEYCODE.MAC_COMMAND_RIGHT
-                    ].indexOf(keyCode) !== -1;
+            function _ignoreKeyCode(keyCode) {
+                return [
+                    KEYCODE.TAB,
+                    KEYCODE.ALT,
+                    KEYCODE.CTRL,
+                    KEYCODE.LEFTARROW,
+                    KEYCODE.RIGHTARROW,
+                    KEYCODE.MAC_COMMAND_LEFT,
+                    KEYCODE.MAC_COMMAND_RIGHT
+                ].indexOf(keyCode) !== -1;
+            }
+
+            function _handleElementKeyDown(event) {
+                var keyCode = event.charCode || event.keyCode || 0;
+
+                if (_ignoreKeyCode(keyCode)) {
+                    return;
                 }
 
-                function _elementKeyDown(event) {
-                    var keyCode = event.charCode || event.keyCode || 0;
-
-                    if (_ignoreKeyCode(keyCode)) {
-                        return;
-                    }
-
-                    if (keyCode === KEYCODE.UPARROW) {
+                switch (keyCode) {
+                    case KEYCODE.UPARROW:
                         ctrl.scrollToPreviousItem();
-
                         event.stopPropagation();
                         event.preventDefault();
 
                         return;
-                    }
 
-                    if (keyCode === KEYCODE.DOWNARROW) {
+                    case KEYCODE.DOWNARROW:
                         ctrl.scrollToNextItem();
 
                         event.stopPropagation();
                         event.preventDefault();
 
                         return;
-                    }
 
-                    if (keyCode === KEYCODE.ENTER) {
+                    case keyCode:
                         ctrl.selectItem(ctrl.selectedIndex, true);
 
                         //prevent postback upon hitting enter
@@ -244,9 +241,8 @@
                         event.stopPropagation();
 
                         return;
-                    }
 
-                    if (keyCode === KEYCODE.ESCAPE) {
+                    case KEYCODE.ESCAPE:
                         ctrl.restoreOriginalText();
                         ctrl.autoHide();
 
@@ -254,73 +250,74 @@
                         event.stopPropagation();
 
                         return;
-                    }
+
+                    default:
+                        return;
+                }
+            }
+
+            function _handleDocumentKeyDown() {
+                // hide inactive dropdowns when multiple auto complete exist on a page
+                internalService.hideAllInactive();
+            }
+
+            function _handleDocumentClick(event) {
+                // hide inactive dropdowns when multiple auto complete exist on a page
+                internalService.hideAllInactive();
+
+                // ignore inline
+                if (ctrl.isInline()) {
+                    return;
                 }
 
-                function _tryQuery(searchText) {
-                    // query only if minimum number of chars are typed; else hide dropdown
-                    if (!searchText || searchText.length < ctrl.options.minimumChars) {
-                        ctrl.autoHide();
-                        return;
-                    }
-
-                    _waitAndQuery(searchText);
+                // no container. probably destroyed in scope $destroy
+                if (!ctrl.container) {
+                    return;
                 }
 
-                function _waitAndQuery(searchText, delay) {
-                    // wait few millisecs before calling query(); this to check if the user has stopped typing
-                    var promise = $timeout(function () {
-                        // has searchText unchanged?
-                        if (searchText === element.val()) {
-                            ctrl.query(searchText);
-                        }
-
-                        //cancel the timeout
-                        $timeout.cancel(promise);
-
-                    }, (delay || 300));
+                // ignore target click
+                if (event.target === ctrl.target[0]) {
+                    event.stopPropagation();
+                    return;
                 }
 
-                function _documentKeyDown() {
-                    // hide inactive dropdowns when multiple auto complete exist on a page
-                    internalService.hideAllInactive();
+                if (_containerContainsTarget(event.target)) {
+                    event.stopPropagation();
+                    return;
                 }
 
-                function _documentClick(event) {
-                    // hide inactive dropdowns when multiple auto complete exist on a page
-                    internalService.hideAllInactive();
+                ctrl.autoHide();
+            }
 
-                    // ignore inline
-                    if (ctrl.isInline()) {
-                        return;
-                    }
-
-                    // no container. probably destroyed in scope $destroy
-                    if (!ctrl.container) {
-                        return;
-                    }
-
-                    // ignore target click
-                    if (event.target === ctrl.target[0]) {
-                        event.stopPropagation();
-                        return;
-                    }
-
-                    if (_containerContainsTarget(event.target)) {
-                        event.stopPropagation();
-                        return;
-                    }
-
+            function _tryQuery(searchText) {
+                // query only if minimum number of chars are typed; else hide dropdown
+                if (!searchText || searchText.length < ctrl.options.minimumChars) {
                     ctrl.autoHide();
+                    return;
                 }
+
+                _waitAndQuery(searchText);
+            }
+
+            function _waitAndQuery(searchText, delay) {
+                // wait few millisecs before calling query(); this to check if the user has stopped typing
+                var promise = $timeout(function () {
+                    // has searchText unchanged?
+                    if (searchText === element.val()) {
+                        ctrl.query(searchText);
+                    }
+
+                    //cancel the timeout
+                    $timeout.cancel(promise);
+
+                }, (delay || 300));
             }
 
             function _containerContainsTarget(target) {
                 // use native Node.contains
                 // https://developer.mozilla.org/en-US/docs/Web/API/Node/contains
-                if (angular.isFunction(ctrl.container[0].contains) &&
-                    ctrl.container[0].contains(target)) {
-
+                var container = ctrl.container[0];
+                if (angular.isFunction(container.contains) && container.contains(target)) {
                     return true;
                 }
 
@@ -368,7 +365,7 @@
         };
 
         this.init = function (options) {
-            that.instanceId = internalService.getNewInstanceId();
+            that.instanceId = internalService.registerInstance(this);
             that.options = options;
             that.containerVisible = that.isInline();
 
@@ -402,7 +399,7 @@
                 _hideDropdown();
             }
         };
-        
+
         this.empty = function () {
             that.selectedIndex = -1;
             that.renderItems = [];
@@ -559,6 +556,12 @@
             }
         }
 
+        function _positionDropdownIfVisible() {
+            if (that.containerVisible) {
+                _positionDropdown();
+            }
+        }
+
         function _positionDropdown() {
             // no need to position if container has been appended to
             // parent specified in options
@@ -566,36 +569,28 @@
                 return;
             }
 
-            if (that.options.dropdownWidth === 'auto') {
+            var dropdownWidth = null;
+            if (!that.options.dropdownWidth || that.options.dropdownWidth === 'auto') {
                 // same as textbox width
-                var rect = that.target[0].getBoundingClientRect();
-                that.container.css({ 'width': rect.width + 'px' });
+                dropdownWidth = that.target[0].getBoundingClientRect().width + 'px';
             }
             else {
-                that.container.css({ 'width': that.options.dropdownWidth });
+                dropdownWidth = that.options.dropdownWidth;
             }
+            that.container.css({ 'width': dropdownWidth });
 
-            if (that.options.dropdownHeight !== 'auto') {
+            if (that.options.dropdownHeight && that.options.dropdownHeight !== 'auto') {
                 that.elementUL.css({ 'max-height': that.options.dropdownHeight });
             }
 
             // use the .position() function from jquery.ui if available (requires both jquery and jquery-ui)
-            if (that.options.positionUsingJQuery && _hasJQueryUI()) {
+            var hasJQueryUI = !!(window.jQuery && window.jQuery.ui);
+            if (that.options.positionUsingJQuery && hasJQueryUI) {
                 _positionUsingJQuery();
             }
             else {
                 _positionUsingDomAPI();
             }
-        }
-        
-        function _positionDropdownIfVisible() {
-            if (that.containerVisible) {
-                _positionDropdown();
-            }
-        }
-
-        function _hasJQueryUI() {
-            return (window.jQuery && window.jQuery.ui);
         }
 
         function _positionUsingJQuery() {
@@ -621,9 +616,10 @@
 
         function _positionUsingDomAPI() {
             var rect = that.target[0].getBoundingClientRect();
+            var DOCUMENT = $document[0];
 
-            var scrollTop = $document[0].body.scrollTop || $document[0].documentElement.scrollTop || $window.pageYOffset,
-                scrollLeft = $document[0].body.scrollLeft || $document[0].documentElement.scrollLeft || $window.pageXOffset;
+            var scrollTop = DOCUMENT.body.scrollTop || DOCUMENT.documentElement.scrollTop || $window.pageYOffset,
+                scrollLeft = DOCUMENT.body.scrollLeft || DOCUMENT.documentElement.scrollLeft || $window.pageXOffset;
 
             that.container.css({
                 'left': rect.left + scrollLeft + 'px',
@@ -647,7 +643,7 @@
             that.textModelCtrl.$setViewValue(value);
         }
 
-        function _hideDropdown () {
+        function _hideDropdown() {
             if (that.isInline() || !that.containerVisible) {
                 return;
             }
@@ -701,6 +697,7 @@
 
                 var items = _renderItems(renderFn, result);
 
+                // in case of paged list we add to the array instead of replacing it
                 angular.forEach(items, function (item) {
                     that.renderItems.push(item);
                 });
@@ -710,31 +707,30 @@
             });
         }
 
-        function _renderItems(renderFn, result) {
+        function _renderItems(renderFn, dataItems) {
             // limit number of items rendered in the dropdown
-            var maxItemsToRender = (result.length < that.options.maxItemsToRender) ? result.length : that.options.maxItemsToRender;
-            var itemsToRender = result.slice(0, maxItemsToRender);
-            var items = [];
+            var maxItemsToRender = (dataItems.length < that.options.maxItemsToRender) ? dataItems.length : that.options.maxItemsToRender;
+            var dataItemsToRender = dataItems.slice(0, maxItemsToRender);
 
-            angular.forEach(itemsToRender, function (data) {
+            return _.map(dataItemsToRender, function (data) {
                 // invoke render callback with the data as parameter
                 // this should return an object with a 'label' and 'value' property where
                 // 'label' is the safe html for display and 'value' is the text for the textbox
                 var item = renderFn(data);
+
                 if (item && item.label && item.value) {
                     // store the data on the renderItem and add to array
                     item.data = data;
-                    items.push(item);
                 }
-            });
 
-            return items;
+                return item;
+            });
         }
 
         function _getRenderFn() {
             // user provided function
             if (angular.isFunction(that.options.renderItem) && that.options.renderItem !== angular.noop) {
-                return $q.when(that.options.renderItem);
+                return $q.when(that.options.renderItem.bind(null));
             }
 
             // itemTemplateUrl
@@ -810,14 +806,13 @@
         var instanceCount = 0;
         var activeInstanceId = 0;
 
-        this.addDirectiveCtrl = function (ctrl) {
+        this.registerInstance = function (ctrl) {
             if (ctrl) {
                 pluginCtrls.push(ctrl);
+                return ++instanceCount;
             }
-        };
 
-        this.getNewInstanceId = function () {
-            return instanceCount++;
+            return -1;
         };
 
         this.setActiveInstanceId = function (instanceId) {
@@ -834,6 +829,15 @@
             });
         };
     }
+
+    var DOM_EVENT = {
+        RESIZE: 'resize',
+        SCROLL: 'scroll',
+        CLICK: 'click',
+        KEYDOWN: 'keydown',
+        FOCUS: 'focus',
+        INPUT: 'input'
+    };
 
     var KEYCODE = {
         TAB: 9,
@@ -973,7 +977,7 @@
         /**
          * Callback for custom rendering a list item. This is called for each item in the dropdown.
          * This must return an object literal with "value" and "label" properties where "label" is the
-         * safe html for display and "value" is the text for the textbox.
+         * template for display and "value" is the text for the textbox.
          * @default angular.noop
          */
         renderItem: angular.noop,
