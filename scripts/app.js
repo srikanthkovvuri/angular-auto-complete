@@ -226,7 +226,7 @@ if (!String.prototype.startsWith) {
             renderItem: function (item) {
                 return {
                     value: item.name,
-                    label: $sce.trustAsHtml("<p class='auto-complete'>" + item.name + "</p>")
+                    label: "<p class='auto-complete'>" + item.name + "</p>"
                 };
             },
             itemSelected: function (e) {
