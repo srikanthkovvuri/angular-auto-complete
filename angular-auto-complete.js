@@ -1,4 +1,6 @@
 (function (global, factory) {
+    'use strict';
+
     if (typeof exports === 'object' && typeof module !== 'undefined') {
         // commonJS
         module.exports = factory(require('angular'));
@@ -15,7 +17,7 @@
 }(this, function (angular) {
     'use strict';
 
-    var internalService = new InternalService();
+    var helperService = new HelperService();
 
     angular
         .module('autoCompleteModule', ['ngSanitize'])
@@ -259,12 +261,12 @@
 
             function _handleDocumentKeyDown() {
                 // hide inactive dropdowns when multiple auto complete exist on a page
-                internalService.hideAllInactive();
+                helperService.hideAllInactive();
             }
 
             function _handleDocumentClick(event) {
                 // hide inactive dropdowns when multiple auto complete exist on a page
-                internalService.hideAllInactive();
+                helperService.hideAllInactive();
 
                 // ignore inline
                 if (ctrl.isInline()) {
@@ -366,7 +368,7 @@
         };
 
         this.init = function (options) {
-            that.instanceId = internalService.registerInstance(this);
+            that.instanceId = helperService.registerInstance(that);
             that.options = options;
             that.containerVisible = that.isInline();
 
@@ -374,7 +376,7 @@
         };
 
         this.activate = function () {
-            internalService.setActiveInstanceId(that.instanceId);
+            helperService.setActiveInstanceId(that.instanceId);
             originalSearchText = null;
         };
 
@@ -830,15 +832,15 @@
         };
     }
 
-    function InternalService() {
+    function HelperService() {
         var that = this;
-        var pluginCtrls = [];
+        var plugins = [];
         var instanceCount = 0;
         var activeInstanceId = 0;
 
-        this.registerInstance = function (ctrl) {
-            if (ctrl) {
-                pluginCtrls.push(ctrl);
+        this.registerInstance = function (instance) {
+            if (instance) {
+                plugins.push(instance);
                 return ++instanceCount;
             }
 
@@ -851,7 +853,7 @@
         };
 
         this.hideAllInactive = function () {
-            angular.forEach(pluginCtrls, function (ctrl) {
+            angular.forEach(plugins, function (ctrl) {
                 // hide if this is not the active instance
                 if (ctrl.instanceId !== activeInstanceId) {
                     ctrl.autoHide();
