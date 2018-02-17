@@ -19,7 +19,8 @@
 
     angular
         .module('autoCompleteModule', ['ngSanitize'])
-        .directive('autoComplete', autoCompleteDirective);
+        .directive('autoComplete', autoCompleteDirective)
+        .directive('autoCompleteRenderItem', autoCompleteRenderItemDirective);
 
     autoCompleteDirective.$inject = ['$q', '$compile', '$document', '$window', '$timeout'];
     function autoCompleteDirective($q, $compile, $document, $window, $timeout) {
@@ -123,7 +124,7 @@
                 html += '             ng-click="ctrl.selectItem($index, true)"';
                 html += '             class="auto-complete-item" data-index="{{ $index }}"';
                 html += '             ng-class="ctrl.getSelectedCssClass($index)">';
-                html += '               <div ng-bind-html="item.label"></div>';
+                html += '               <auto-complete-render-item data="item.data" template="item.label" />';
                 html += '         </li>';
                 html += '     </ul>';
 
@@ -344,8 +345,8 @@
         }
     }
 
-    MainCtrl.$inject = ['$q', '$window', '$document', '$sce', '$timeout', '$interpolate', '$templateRequest', '$exceptionHandler'];
-    function MainCtrl($q, $window, $document, $sce, $timeout, $interpolate, $templateRequest, $exceptionHandler) {
+    MainCtrl.$inject = ['$q', '$window', '$document', '$timeout', '$interpolate', '$templateRequest', '$exceptionHandler'];
+    function MainCtrl($q, $window, $document, $timeout, $interpolate, $templateRequest, $exceptionHandler) {
         var that = this;
         var originalSearchText = null;
         var queryCounter = 0;
@@ -715,7 +716,7 @@
             return _.map(dataItemsToRender, function (data) {
                 // invoke render callback with the data as parameter
                 // this should return an object with a 'label' and 'value' property where
-                // 'label' is the safe html for display and 'value' is the text for the textbox
+                // 'label' is the template for display and 'value' is the text for the textbox
                 var item = renderFn(data);
 
                 if (item && item.label && item.value) {
@@ -740,23 +741,22 @@
 
             // itemTemplate or default
             var template = that.options.itemTemplate || '<span>{{item}}</span>';
-            return $q.when(_renderItem.bind(null, $interpolate(template, false)));
+            return $q.when(_getRenderItem.bind(null, template));
         }
 
         function _getRenderFnUsingTemplateUrl() {
             return $templateRequest(that.options.itemTemplateUrl)
-                .then(function (content) {
-                    // delegate to local function
-                    return _renderItem.bind(null, $interpolate(content, false));
+                .then(function (template) {
+                    return _getRenderItem.bind(null, template);
                 })
                 .catch($exceptionHandler);
         }
 
-        function _renderItem(interpolationFn, data) {
+        function _getRenderItem(template, data) {
             var value = (angular.isObject(data) && that.options.selectedTextAttr) ? data[that.options.selectedTextAttr] : data;
             return {
                 value: value,
-                label: $sce.trustAsHtml(interpolationFn({ item: data }))
+                label: template
             };
         }
 
@@ -798,6 +798,36 @@
                 hideDropdown: _hideDropdown
             };
         })();
+    }
+
+    autoCompleteRenderItemDirective.$inject = ['$compile', '$rootScope', '$sce'];
+    function autoCompleteRenderItemDirective($compile, $rootScope, $sce) {
+        return {
+            restrict: 'E',
+            transclude: 'element',
+            scope: {
+                data: '<',
+                template: '<'
+            },
+            link: function (scope, element, attrs) {
+                var renderScope = $rootScope.$new(true);
+                renderScope.item = scope.data;
+
+                // Needed to maintain backward compatibility
+                // When 'item' is a value returned by the 'options.renderItem' callback the 'label' might represent
+                // a trusted value returned by a call to $sce.trustAsHtml(html). We need to get the original html by
+                // unwrapping the trusted value. Not doing so will cause the linkFn to fail.
+                // valueOf() returns 'template' unchanged if 'template' is not a trusted value.
+                var template = $sce.valueOf(scope.template);
+
+                var linkFn = $compile(template);
+                linkFn(renderScope, function (clonedElement) {
+                    // we append to the element's parent since transclude is set to 'element'
+                    // that causes the directive itself to be replaced
+                    $(element[0].parentElement).append(clonedElement);
+                });
+            }
+        };
     }
 
     function InternalService() {
@@ -976,8 +1006,8 @@
         loadingComplete: angular.noop,
         /**
          * Callback for custom rendering a list item. This is called for each item in the dropdown.
-         * This must return an object literal with "value" and "label" properties where "label" is the
-         * template for display and "value" is the text for the textbox.
+         * This must return an object literal with "value" and "label" properties where
+         * "label" is the template for display and "value" is the text for the textbox.
          * @default angular.noop
          */
         renderItem: angular.noop,
