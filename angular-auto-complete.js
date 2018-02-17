@@ -126,7 +126,7 @@
                 html += '             ng-click="ctrl.selectItem($index, true)"';
                 html += '             class="auto-complete-item" data-index="{{ $index }}"';
                 html += '             ng-class="ctrl.getSelectedCssClass($index)">';
-                html += '               <auto-complete-render-item data="item.data" template="item.label" />';
+                html += '               <auto-complete-render-item data="item.data" template="item.label" index="$index" />';
                 html += '         </li>';
                 html += '     </ul>';
 
@@ -808,24 +808,26 @@
             restrict: 'E',
             transclude: 'element',
             scope: {
+                index: '<',
                 data: '<',
                 template: '<'
             },
             link: function (scope, element, attrs) {
                 var renderScope = $rootScope.$new(true);
                 renderScope.item = scope.data;
+                renderScope.index = scope.index;
 
-                // Needed to maintain backward compatibility
-                // When 'item' is a value returned by the 'options.renderItem' callback the 'label' might represent
-                // a trusted value returned by a call to $sce.trustAsHtml(html). We need to get the original html by
-                // unwrapping the trusted value. Not doing so will cause the linkFn to fail.
-                // valueOf() returns 'template' unchanged if 'template' is not a trusted value.
+                // Needed to maintain backward compatibility since the parameter passed to $compile must be html.
+                // When 'item' is returned from the 'options.renderItem' callback the 'template' might contain
+                // a trusted value [returned by a call to $sce.trustAsHtml(html)]. We need to get the original
+                // html that was provided to $sce.trustAsHtml using the valueOf() function.
+                // If 'template' is not a value that had been returned by $sce.trustAsHtml, it will be returned unchanged.
+                // Not doing this might cause the linkFn function to fail when 'options.renderItem' callback is used.
                 var template = $sce.valueOf(scope.template);
 
                 var linkFn = $compile(template);
                 linkFn(renderScope, function (clonedElement) {
-                    // we append to the element's parent since transclude is set to 'element'
-                    // that causes the directive itself to be replaced
+                    // append to the directive element's parent (<li>) since the element is replaced (transclude is set to 'element').
                     $(element[0].parentElement).append(clonedElement);
                 });
             }
